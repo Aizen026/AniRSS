@@ -40,6 +40,13 @@ class _FeedScreenState extends State<FeedScreen> {
   List<TorrentItem> filteredItems = [];
   bool isLoading = false;
 
+  String _getCleanTitle(String title) {
+    var clean = title.replaceAll(RegExp(r'^\[.*?\]\s*|^\(.*?\)\s*'), '');
+    clean = clean.replaceAll(RegExp(r'\.\w{3,4}$'), '');
+    clean = clean.replaceAll(RegExp(r'\[.*?\]|\(.*?\)'), '');
+    return clean.trim();
+  }
+
   Future<void> fetchAndFilterFeed() async {
     setState(() => isLoading = true);
     try {
@@ -48,6 +55,7 @@ class _FeedScreenState extends State<FeedScreen> {
         final rawXml = xml.XmlDocument.parse(response.body);
         final items = rawXml.findAllElements('item');
         List<TorrentItem> parsed = [];
+        Set<String> seenTitles = {};
 
         for (var node in items) {
           final title = node.findElements('title').single.innerText;
@@ -57,7 +65,11 @@ class _FeedScreenState extends State<FeedScreen> {
               title.toLowerCase().contains(word.toLowerCase()));
 
           if (!isBlacklisted) {
-            parsed.add(TorrentItem(title: title, magnet: link));
+            final cleanTitle = _getCleanTitle(title);
+            if (!seenTitles.contains(cleanTitle)) {
+              seenTitles.add(cleanTitle);
+              parsed.add(TorrentItem(title: title, magnet: link));
+            }
           }
         }
         setState(() => filteredItems = parsed);

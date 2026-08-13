@@ -11,6 +11,12 @@ class TorrentItem {
   TorrentItem({required this.title, required this.magnet});
 }
 
+class AnimeGroup {
+  final String title;
+  final List<TorrentItem> torrents;
+  AnimeGroup({required this.title, required this.torrents});
+}
+
 class AnimeTorrentApp extends StatelessWidget {
   const AnimeTorrentApp({super.key});
 
@@ -36,8 +42,7 @@ class _FeedScreenState extends State<FeedScreen> {
     text: 'https://nyaa.si/?page=rss',
   );
 
-  List<String> blacklist = ['dual audio', 'dub', '360p', '720p', 'multi'];
-  List<TorrentItem> filteredItems = [];
+  List<AnimeGroup> animeGroups = [];
   bool isLoading = false;
 
   String _getCleanTitle(String title) {
@@ -52,27 +57,31 @@ class _FeedScreenState extends State<FeedScreen> {
     try {
       final response = await http.get(Uri.parse(_feedController.text));
       if (response.statusCode == 200) {
-        final rawXml = xml.XmlDocument.parse(response.body);
+        var bodyStr = response.body.trim();
+        if (!bodyStr.startsWith('<?xml') && !bodyStr.startsWith('<rss')) {
+          throw Exception('Invalid RSS feed format (might be HTML or blocked)');
+        }
+        final rawXml = xml.XmlDocument.parse(bodyStr);
         final items = rawXml.findAllElements('item');
-        List<TorrentItem> parsed = [];
-        Set<String> seenTitles = {};
+
+        Map<String, List<TorrentItem>> grouped = {};
 
         for (var node in items) {
           final title = node.findElements('title').single.innerText;
           final link = node.findElements('link').single.innerText;
 
-          bool isBlacklisted = blacklist.any((word) =>
-              title.toLowerCase().contains(word.toLowerCase()));
-
-          if (!isBlacklisted) {
-            final cleanTitle = _getCleanTitle(title);
-            if (!seenTitles.contains(cleanTitle)) {
-              seenTitles.add(cleanTitle);
-              parsed.add(TorrentItem(title: title, magnet: link));
-            }
+          final cleanTitle = _getCleanTitle(title);
+          if (!grouped.containsKey(cleanTitle)) {
+            grouped[cleanTitle] = [];
           }
+          grouped[cleanTitle]!.add(TorrentItem(title: title, magnet: link));
         }
-        setState(() => filteredItems = parsed);
+
+        List<AnimeGroup> parsedGroups = grouped.entries
+            .map((e) => AnimeGroup(title: e.key, torrents: e.value))
+            .toList();
+
+        setState(() => animeGroups = parsedGroups);
       }
     } catch (e) {
       if (mounted) {
@@ -116,6 +125,85 @@ class _FeedScreenState extends State<FeedScreen> {
               ),
             ),
             const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: isLoading ? null : fetchAndFilterFeed,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Fetch Feed'),
+            ),
+            const Divider(height: 24),
+            Expanded(
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.builder(
+                      itemCount: animeGroups.length,
+                      itemBuilder: (context, index) {
+                        final group = animeGroups[index];
+                        return Card(
+                          child: ListTile(
+                            title: Text(group.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            subtitle: Text('${group.torrents.length} torrent(s) available'),
+                            trailing: const Icon(Icons.arrow_forward_ios),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => AnimeDetailsScreen(group: group),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AnimeDetailsScreen extends StatefulWidget {
+  final AnimeGroup group;
+  const AnimeDetailsScreen({super.key, required this.group});
+
+  @override
+  State<AnimeDetailsScreen> createState() => _AnimeDetailsScreenState();
+}
+
+class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
+  List<String> blacklist = ['dual audio', 'dub', '360p', '720p', 'multi'];
+
+  Future<void> openTorrentApp(BuildContext context, String magnetUrl) async {
+    final Uri uri = Uri.parse(magnetUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No torrent client found on device.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Filter the torrents based on the blacklist
+    List<TorrentItem> filteredTorrents = widget.group.torrents.where((item) {
+      return !blacklist.any((word) =>
+          item.title.toLowerCase().contains(word.toLowerCase()));
+    }).toList();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.group.title)),
+      body: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Filters (Blacklist):', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8.0,
               children: blacklist.map((word) {
@@ -125,26 +213,20 @@ class _FeedScreenState extends State<FeedScreen> {
                 );
               }).toList(),
             ),
-            const SizedBox(height: 10),
-            ElevatedButton.icon(
-              onPressed: isLoading ? null : fetchAndFilterFeed,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Fetch & Filter Feed'),
-            ),
             const Divider(height: 24),
             Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
+              child: filteredTorrents.isEmpty
+                  ? const Center(child: Text('All torrents filtered out.'))
                   : ListView.builder(
-                      itemCount: filteredItems.length,
+                      itemCount: filteredTorrents.length,
                       itemBuilder: (context, index) {
-                        final item = filteredItems[index];
+                        final item = filteredTorrents[index];
                         return Card(
                           child: ListTile(
                             title: Text(item.title, style: const TextStyle(fontSize: 14)),
                             trailing: IconButton(
                               icon: const Icon(Icons.download, color: Colors.green),
-                              onPressed: () => openTorrentApp(item.magnet),
+                              onPressed: () => openTorrentApp(context, item.magnet),
                             ),
                           ),
                         );

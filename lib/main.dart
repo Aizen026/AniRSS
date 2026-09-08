@@ -57,12 +57,15 @@ class _FeedScreenState extends State<FeedScreen> {
         List<TorrentItem> parsed = [];
         Set<String> seenTitles = {};
 
+        final lowerBlacklist = blacklist.map((w) => w.toLowerCase()).toList();
+
         for (var node in items) {
           final title = node.findElements('title').single.innerText;
           final link = node.findElements('link').single.innerText;
 
-          bool isBlacklisted = blacklist.any((word) =>
-              title.toLowerCase().contains(word.toLowerCase()));
+          final lowerTitle = title.toLowerCase();
+          bool isBlacklisted = lowerBlacklist.any((word) =>
+              lowerTitle.contains(word));
 
           if (!isBlacklisted) {
             final cleanTitle = _getCleanTitle(title);

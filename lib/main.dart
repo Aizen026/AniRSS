@@ -40,10 +40,14 @@ class _FeedScreenState extends State<FeedScreen> {
   List<TorrentItem> filteredItems = [];
   bool isLoading = false;
 
+  static final RegExp _prefixRegex = RegExp(r'^\[.*?\]\s*|^\(.*?\)\s*');
+  static final RegExp _extensionRegex = RegExp(r'\.\w{3,4}$');
+  static final RegExp _tagsRegex = RegExp(r'\[.*?\]|\(.*?\)');
+
   String _getCleanTitle(String title) {
-    var clean = title.replaceAll(RegExp(r'^\[.*?\]\s*|^\(.*?\)\s*'), '');
-    clean = clean.replaceAll(RegExp(r'\.\w{3,4}$'), '');
-    clean = clean.replaceAll(RegExp(r'\[.*?\]|\(.*?\)'), '');
+    var clean = title.replaceAll(_prefixRegex, '');
+    clean = clean.replaceAll(_extensionRegex, '');
+    clean = clean.replaceAll(_tagsRegex, '');
     return clean.trim();
   }
 

@@ -50,7 +50,11 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> fetchAndFilterFeed() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse(_feedController.text));
+      final uri = Uri.parse(_feedController.text);
+      if (uri.scheme != 'http' && uri.scheme != 'https') {
+        throw Exception('Invalid URL scheme');
+      }
+      final response = await http.get(uri);
       if (response.statusCode == 200) {
         final rawXml = xml.XmlDocument.parse(response.body);
         final items = rawXml.findAllElements('item');
@@ -61,8 +65,8 @@ class _FeedScreenState extends State<FeedScreen> {
           final title = node.findElements('title').single.innerText;
           final link = node.findElements('link').single.innerText;
 
-          bool isBlacklisted = blacklist.any((word) =>
-              title.toLowerCase().contains(word.toLowerCase()));
+          bool isBlacklisted = blacklist
+              .any((word) => title.toLowerCase().contains(word.toLowerCase()));
 
           if (!isBlacklisted) {
             final cleanTitle = _getCleanTitle(title);
@@ -141,9 +145,11 @@ class _FeedScreenState extends State<FeedScreen> {
                         final item = filteredItems[index];
                         return Card(
                           child: ListTile(
-                            title: Text(item.title, style: const TextStyle(fontSize: 14)),
+                            title: Text(item.title,
+                                style: const TextStyle(fontSize: 14)),
                             trailing: IconButton(
-                              icon: const Icon(Icons.download, color: Colors.green),
+                              icon: const Icon(Icons.download,
+                                  color: Colors.green),
                               onPressed: () => openTorrentApp(item.magnet),
                             ),
                           ),
